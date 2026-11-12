@@ -20,12 +20,30 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Restore GymLog app source
+      - name: Repair and restore GymLog source
         run: |
-          base64 -d source-files.zip.b64 > /tmp/gymlog-source.zip
-          unzip -o /tmp/gymlog-source.zip -d /tmp/gymlog-source
+          python3 - <<'PY'
+          import base64, io, string, zipfile
+          from pathlib import Path
+          encoded = Path("source-files.zip.b64").read_text().strip()
+          # The first transfer dropped one Base64 character near the CSS entry.
+          # Reconstruct the missing character and validate both files by ZIP CRC.
+          candidate_base = encoded[:12624] + encoded[12625:]
+          alphabet = string.ascii_letters + string.digits + "+/"
+          for char in alphabet:
+              try:
+                  data = base64.b64decode(candidate_base[:12624] + char + candidate_base[12624:], validate=True)
+                  with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                      if archive.testzip() is None:
+                          archive.extractall("/tmp/gymlog-source")
+                          print("GymLog source archive repaired and verified.")
+                          break
+              except Exception:
+                  continue
+          else:
+              raise SystemExit("Could not repair GymLog source archive.")
+          PY
           cp -R /tmp/gymlog-source/src/. src/
-          rm source-files.zip.b64
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
