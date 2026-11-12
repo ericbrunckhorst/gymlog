@@ -20,6 +20,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Restore GymLog app source
+        run: |
+          base64 -d source-files.zip.b64 > /tmp/gymlog-source.zip
+          unzip -o /tmp/gymlog-source.zip -d /tmp/gymlog-source
+          cp -R /tmp/gymlog-source/src/. src/
+          rm source-files.zip.b64
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
