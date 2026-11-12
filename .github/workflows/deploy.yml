@@ -23,24 +23,38 @@ jobs:
       - name: Repair and restore GymLog source
         run: |
           python3 - <<'PY'
-          import base64, io, string, zipfile
+          import base64, io, string, zipfile, zlib
           from pathlib import Path
           encoded = Path("source-files.zip.b64").read_text().strip()
-          # The first transfer dropped one Base64 character near the CSS entry.
-          # Reconstruct the missing character and validate both files by ZIP CRC.
-          candidate_base = encoded[:12624] + encoded[12625:]
+          encoded = encoded[:12624] + encoded[12625:]
           alphabet = string.ascii_letters + string.digits + "+/"
-          for char in alphabet:
-              try:
-                  data = base64.b64decode(candidate_base[:12624] + char + candidate_base[12624:], validate=True)
-                  with zipfile.ZipFile(io.BytesIO(data)) as archive:
-                      if archive.testzip() is None:
-                          archive.extractall("/tmp/gymlog-source")
-                          print("GymLog source archive repaired and verified.")
-                          break
-              except Exception:
-                  continue
-          else:
+          repaired = None
+          for pos in range(len(encoded) + 1):
+              prefix, suffix = encoded[:pos], encoded[pos:]
+              for char in alphabet:
+                  try:
+                      data = base64.b64decode(prefix + char + suffix, validate=True)
+                      if len(data) != 13286 or data[:4] != b"PK\x03\x04":
+                          continue
+                      crc = int.from_bytes(data[14:18], "little")
+                      comp_size = int.from_bytes(data[18:22], "little")
+                      name_len = int.from_bytes(data[26:28], "little")
+                      extra_len = int.from_bytes(data[28:30], "little")
+                      start = 30 + name_len + extra_len
+                      raw = zlib.decompress(data[start:start+comp_size], -15)
+                      if len(raw) != 32265 or zlib.crc32(raw) & 0xffffffff != crc:
+                          continue
+                      with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                          if archive.testzip() is None:
+                              repaired = data
+                              archive.extractall("/tmp/gymlog-source")
+                              break
+                  except Exception:
+                      continue
+              if repaired is not None:
+                  print(f"Repaired source archive at Base64 offset {pos}.")
+                  break
+          if repaired is None:
               raise SystemExit("Could not repair GymLog source archive.")
           PY
           cp -R /tmp/gymlog-source/src/. src/
