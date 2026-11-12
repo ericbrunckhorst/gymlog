@@ -1,0 +1,14 @@
+{
+  "name": "GymLog – Personal Gym Tracker",
+  "short_name": "GymLog",
+  "description": "Dein persönliches Krafttrainingstagebuch",
+  "start_url": "/gymlog/",
+  "scope": "/gymlog/",
+  "display": "standalone",
+  "background_color": "#101310",
+  "theme_color": "#101310",
+  "lang": "de",
+  "icons": [
+    { "src": "/gymlog/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
