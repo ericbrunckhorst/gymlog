@@ -2,7 +2,7 @@ name: Deploy GymLog to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, backup/pre-firebase-2026-11-17]
   workflow_dispatch:
 
 permissions:
@@ -73,6 +73,7 @@ jobs:
         with:
           path: ./dist
   deploy:
+    if: github.ref == 'refs/heads/main'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
