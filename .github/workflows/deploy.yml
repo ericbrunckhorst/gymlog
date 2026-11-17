@@ -2,7 +2,7 @@ name: Deploy GymLog to GitHub Pages
 
 on:
   push:
-    branches: [main, backup/pre-firebase-2026-11-17]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -58,12 +58,6 @@ jobs:
               raise SystemExit("Could not repair GymLog source archive.")
           PY
           cp -R /tmp/gymlog-source/src/. src/
-      - name: Upload restored source for review
-        uses: actions/upload-artifact@v4
-        with:
-          name: gymlog-restored-source
-          path: /tmp/gymlog-source/
-          retention-days: 1
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
