@@ -58,6 +58,8 @@ jobs:
               raise SystemExit("Could not repair GymLog source archive.")
           PY
           cp -R /tmp/gymlog-source/src/. src/
+          # Overlay the Firebase-enabled app files after restoring the original source archive.
+          cp -R firebase-src/. src/
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
