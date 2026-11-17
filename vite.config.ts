@@ -8,7 +8,7 @@ export default defineConfig({
     cssCodeSplit: false,
     rollupOptions: {
       output: {
-        entryFileNames: "assets/gymlog.js",
+        entryFileNames: "assets/gymlog-cloud.js",
         chunkFileNames: "assets/[name].js",
         assetFileNames: "assets/gymlog.[ext]"
       }
