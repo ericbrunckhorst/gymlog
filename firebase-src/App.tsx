@@ -138,6 +138,13 @@ export default function App() {
         const snapshot = await getDoc(doc(db, "users", user.uid, "backups", "main"));
         if (cancelled) return;
         if (snapshot.exists()) {
+          if (snapshot.data().cloudEnabled === true) {
+            await writeCloudEnabled(user.uid).catch(error => console.warn("Cloud-Status konnte lokal nicht gespeichert werden.", error));
+            try { localStorage.setItem(enabledKey, "1"); } catch (error) { console.warn("Cloud-Einstellung konnte nicht aus localStorage gespeichert werden.", error); }
+            setCloudChoice("enabled");
+            setCloudStatus("Cloud-Synchronisierung aktiv");
+            return;
+          }
           const remote = snapshot.data().data;
           if (isValidBackup(remote)) {
             setPendingCloud(remote);
@@ -170,7 +177,7 @@ export default function App() {
     if (cloudTimer.current !== null) window.clearTimeout(cloudTimer.current);
     cloudTimer.current = window.setTimeout(() => {
       setDoc(doc(db, "users", user.uid, "backups", "main"), {
-        data, updatedAt: serverTimestamp(), appVersion: 1
+        data, updatedAt: serverTimestamp(), appVersion: 1, cloudEnabled: true
       }).then(() => setCloudStatus("Cloud gesichert"))
         .catch(error => { console.error(error); setCloudStatus("Cloud-Sicherung fehlgeschlagen"); });
     }, 1200);
@@ -187,7 +194,7 @@ export default function App() {
     if (!user || !data) return;
     setCloudBusy(true);
     try {
-      await setDoc(doc(db, "users", user.uid, "backups", "main"), { data, updatedAt: serverTimestamp(), appVersion: 1 });
+      await setDoc(doc(db, "users", user.uid, "backups", "main"), { data, updatedAt: serverTimestamp(), appVersion: 1, cloudEnabled: true });
       await writeCloudEnabled(user.uid);
       try { localStorage.setItem(`gymlog-cloud-enabled-${user.uid}`, "1"); } catch (error) { console.warn("Cloud-Einstellung konnte nicht in localStorage gespeichert werden.", error); }
       setPendingCloud(null); setCloudChoice("enabled"); setCloudStatus("Cloud gesichert");
@@ -202,6 +209,7 @@ export default function App() {
     try {
       await writeData(pendingCloud); setData(pendingCloud);
       if (user) {
+        await setDoc(doc(db, "users", user.uid, "backups", "main"), { cloudEnabled: true }, { merge: true });
         await writeCloudEnabled(user.uid);
         try { localStorage.setItem(`gymlog-cloud-enabled-${user.uid}`, "1"); } catch (error) { console.warn("Cloud-Einstellung konnte nicht in localStorage gespeichert werden.", error); }
       }
