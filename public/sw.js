@@ -1,4 +1,4 @@
-const CACHE = "gymlog-shell-v5";
+const CACHE = "gymlog-shell-v6";
 const BASE = "/gymlog/";
 const APP_SHELL = [BASE, `${BASE}index.html`, `${BASE}manifest.webmanifest`, `${BASE}icon.svg`, `${BASE}assets/gymlog-cloud.js`, `${BASE}assets/gymlog.css`];
 self.addEventListener("install", (event) => {
