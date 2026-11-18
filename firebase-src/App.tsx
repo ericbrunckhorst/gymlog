@@ -100,6 +100,16 @@ export default function App() {
 
   useEffect(() => {
     if (!user || !ready || !data || cloudChoice !== "idle") return;
+    const enabledKey = `gymlog-cloud-enabled-${user.uid}`;
+    try {
+      if (localStorage.getItem(enabledKey) === "1") {
+        setCloudChoice("enabled");
+        setCloudStatus("Cloud-Synchronisierung aktiv");
+        return;
+      }
+    } catch (error) {
+      console.warn("Cloud-Einstellung konnte nicht gelesen werden.", error);
+    }
     let cancelled = false;
     setCloudStatus("Cloud-Backup wird geprüft…");
     getDoc(doc(db, "users", user.uid, "backups", "main")).then(snapshot => {
@@ -153,6 +163,7 @@ export default function App() {
     setCloudBusy(true);
     try {
       await setDoc(doc(db, "users", user.uid, "backups", "main"), { data, updatedAt: serverTimestamp(), appVersion: 1 });
+      try { localStorage.setItem(`gymlog-cloud-enabled-${user.uid}`, "1"); } catch (error) { console.warn("Cloud-Einstellung konnte nicht gespeichert werden.", error); }
       setPendingCloud(null); setCloudChoice("enabled"); setCloudStatus("Cloud gesichert");
       setNotice("Deine lokalen GymLog-Daten sind jetzt in der Cloud gesichert.");
     } catch (error) { console.error(error); setCloudStatus("Sicherung fehlgeschlagen"); setNotice("Cloud-Sicherung fehlgeschlagen. Deine lokalen Daten bleiben erhalten."); }
@@ -163,7 +174,9 @@ export default function App() {
     if (!window.confirm("Das Cloud-Backup ersetzt die Daten auf diesem Gerät. Möchtest du fortfahren?")) return;
     setCloudBusy(true);
     try {
-      await writeData(pendingCloud); setData(pendingCloud); setCloudChoice("enabled");
+      await writeData(pendingCloud); setData(pendingCloud);
+      try { if (user) localStorage.setItem(`gymlog-cloud-enabled-${user.uid}`, "1"); } catch (error) { console.warn("Cloud-Einstellung konnte nicht gespeichert werden.", error); }
+      setCloudChoice("enabled");
       setCloudStatus("Cloud-Backup wiederhergestellt"); setNotice("Cloud-Backup erfolgreich wiederhergestellt.");
     } catch (error) { console.error(error); setNotice("Wiederherstellung fehlgeschlagen. Lokale Daten wurden nicht absichtlich überschrieben."); }
     finally { setCloudBusy(false); }
