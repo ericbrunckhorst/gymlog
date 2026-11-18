@@ -59,6 +59,25 @@ async function writeData(data: AppData): Promise<void> {
     tx.onabort = () => { db.close(); reject(tx.error); };
   });
 }
+async function readCloudEnabled(userId: string): Promise<boolean> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("app", "readonly");
+    const req = tx.objectStore("app").get(`cloud-enabled-${userId}`);
+    req.onsuccess = () => { db.close(); resolve(req.result === true); };
+    req.onerror = () => { db.close(); reject(req.error); };
+  });
+}
+async function writeCloudEnabled(userId: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("app", "readwrite");
+    tx.objectStore("app").put(true, `cloud-enabled-${userId}`);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+    tx.onabort = () => { db.close(); reject(tx.error); };
+  });
+}
 const dateLabel = (iso: string) => new Date(iso).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" });
 const validNumber = (value: string) => value.trim() === "" || (Number.isFinite(Number(value)) && Number(value) >= 0);
 const isObject = (value: unknown): value is Record<string, any> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -100,42 +119,48 @@ export default function App() {
 
   useEffect(() => {
     if (!user || !ready || !data || cloudChoice !== "idle") return;
-    const enabledKey = `gymlog-cloud-enabled-${user.uid}`;
-    try {
-      if (localStorage.getItem(enabledKey) === "1") {
+    let cancelled = false;
+    const checkCloud = async () => {
+      const enabledKey = `gymlog-cloud-enabled-${user.uid}`;
+      let enabled = false;
+      try { enabled = await readCloudEnabled(user.uid); }
+      catch (error) { console.warn("Cloud-Einstellung konnte nicht aus dem lokalen Speicher gelesen werden.", error); }
+      try { enabled = enabled || localStorage.getItem(enabledKey) === "1"; }
+      catch (error) { console.warn("Cloud-Einstellung konnte nicht aus localStorage gelesen werden.", error); }
+      if (cancelled) return;
+      if (enabled) {
         setCloudChoice("enabled");
         setCloudStatus("Cloud-Synchronisierung aktiv");
         return;
       }
-    } catch (error) {
-      console.warn("Cloud-Einstellung konnte nicht gelesen werden.", error);
-    }
-    let cancelled = false;
-    setCloudStatus("Cloud-Backup wird geprüft…");
-    getDoc(doc(db, "users", user.uid, "backups", "main")).then(snapshot => {
-      if (cancelled) return;
-      if (snapshot.exists()) {
-        const remote = snapshot.data().data;
-        if (isValidBackup(remote)) {
-          setPendingCloud(remote);
-          setCloudChoice("choose");
-          setCloudStatus("Entscheidung erforderlich");
+      setCloudStatus("Cloud-Backup wird geprüft…");
+      try {
+        const snapshot = await getDoc(doc(db, "users", user.uid, "backups", "main"));
+        if (cancelled) return;
+        if (snapshot.exists()) {
+          const remote = snapshot.data().data;
+          if (isValidBackup(remote)) {
+            setPendingCloud(remote);
+            setCloudChoice("choose");
+            setCloudStatus("Entscheidung erforderlich");
+          } else {
+            setCloudChoice("blocked");
+            setCloudStatus("Cloud-Backup hat ein unbekanntes Format");
+            setNotice("Das Cloud-Backup hat ein unbekanntes Format. Deine lokalen Daten bleiben unverändert.");
+          }
         } else {
-          setCloudChoice("blocked");
-          setCloudStatus("Cloud-Backup hat ein unbekanntes Format");
-          setNotice("Das Cloud-Backup hat ein unbekanntes Format. Deine lokalen Daten bleiben unverändert.");
+          setPendingCloud(null);
+          setCloudChoice("choose");
+          setCloudStatus("Noch kein Cloud-Backup");
         }
-      } else {
-        setPendingCloud(null);
-        setCloudChoice("choose");
-        setCloudStatus("Noch kein Cloud-Backup");
+      } catch (error) {
+        if (cancelled) return;
+        console.error(error);
+        setCloudStatus("Cloud-Prüfung fehlgeschlagen");
+        setNotice("Cloud-Backup konnte nicht geprüft werden. Deine lokalen Daten sind weiterhin verfügbar.");
       }
-    }).catch(error => {
-      if (cancelled) return;
-      console.error(error);
-      setCloudStatus("Cloud-Prüfung fehlgeschlagen");
-      setNotice("Cloud-Backup konnte nicht geprüft werden. Deine lokalen Daten sind weiterhin verfügbar.");
-    });
+    };
+    checkCloud();
     return () => { cancelled = true; };
   }, [user, ready, data, cloudChoice]);
 
@@ -163,7 +188,8 @@ export default function App() {
     setCloudBusy(true);
     try {
       await setDoc(doc(db, "users", user.uid, "backups", "main"), { data, updatedAt: serverTimestamp(), appVersion: 1 });
-      try { localStorage.setItem(`gymlog-cloud-enabled-${user.uid}`, "1"); } catch (error) { console.warn("Cloud-Einstellung konnte nicht gespeichert werden.", error); }
+      await writeCloudEnabled(user.uid);
+      try { localStorage.setItem(`gymlog-cloud-enabled-${user.uid}`, "1"); } catch (error) { console.warn("Cloud-Einstellung konnte nicht in localStorage gespeichert werden.", error); }
       setPendingCloud(null); setCloudChoice("enabled"); setCloudStatus("Cloud gesichert");
       setNotice("Deine lokalen GymLog-Daten sind jetzt in der Cloud gesichert.");
     } catch (error) { console.error(error); setCloudStatus("Sicherung fehlgeschlagen"); setNotice("Cloud-Sicherung fehlgeschlagen. Deine lokalen Daten bleiben erhalten."); }
@@ -175,7 +201,10 @@ export default function App() {
     setCloudBusy(true);
     try {
       await writeData(pendingCloud); setData(pendingCloud);
-      try { if (user) localStorage.setItem(`gymlog-cloud-enabled-${user.uid}`, "1"); } catch (error) { console.warn("Cloud-Einstellung konnte nicht gespeichert werden.", error); }
+      if (user) {
+        await writeCloudEnabled(user.uid);
+        try { localStorage.setItem(`gymlog-cloud-enabled-${user.uid}`, "1"); } catch (error) { console.warn("Cloud-Einstellung konnte nicht in localStorage gespeichert werden.", error); }
+      }
       setCloudChoice("enabled");
       setCloudStatus("Cloud-Backup wiederhergestellt"); setNotice("Cloud-Backup erfolgreich wiederhergestellt.");
     } catch (error) { console.error(error); setNotice("Wiederherstellung fehlgeschlagen. Lokale Daten wurden nicht absichtlich überschrieben."); }
